@@ -1,0 +1,837 @@
+<!DOCTYPE html>
+<html lang="fil">
+<head>
+   
+ <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Escape Room Gamit ang Sangkap sa Pagbigkas</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=Nunito:wght@400;700;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        pastel: { pink: '#ffd1dc', blue: '#aec6cf', green: '#b0f2c2', yellow: '#fdfd96', purple: '#c3b1e1', orange: '#ffb347' },
+                        room: { bg: '#f8f4e6', wall: '#e0d8c0', floor: '#d3c7a3' }
+                    },
+                    fontFamily: { 'cartoon': ['"Fredoka One"', 'cursive'], 'body': ['"Nunito"', 'sans-serif'] },
+                    boxShadow: { 'cartoon': '4px 4px 0px 0px rgba(0, 0, 0, 0.2)' }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            font-family: 'Nunito', sans-serif;
+            background-color: #2c3e50;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            overflow: hidden;
+        }
+
+        /* Perfect 16:9 ratio container that always fits the screen */
+        #game-container {
+            position: relative;
+            width: 100%;
+            max-width: 1200px;
+            aspect-ratio: 16 / 9;
+            margin: auto;
+            background-color: #f8f4e6;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            border: 8px solid #34495e;
+            border-radius: 1rem;
+            box-sizing: border-box;
+        }
+        @media (min-aspect-ratio: 16/9) {
+            #game-container {
+                height: 90vh;
+                width: auto;
+            }
+        }
+
+        .cartoon-btn {
+            background-color: #ffb347;
+            color: #fff;
+            font-family: 'Fredoka One', cursive;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            text-shadow: 1px 1px 0px rgba(0,0,0,0.2);
+            transition: all 0.1s;
+            cursor: pointer;
+        }
+        
+        .cartoon-btn:active { transform: translate(2px, 2px); box-shadow: 2px 2px 0px 0px rgba(0, 0, 0, 0.2); }
+        .cartoon-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
+
+        .title-text {
+            font-family: 'Fredoka One', cursive;
+            color: #ffb347;
+            text-shadow: 3px 3px 0px #c3b1e1, -1px -1px 0px #fff, 1px -1px 0px #fff, -1px 1px 0px #fff, 1px 1px 0px #fff;
+        }
+        
+        .panel {
+            background: rgba(255, 255, 255, 0.95);
+            border: 4px solid #aec6cf;
+            border-radius: 15px;
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.05), 4px 4px 0 rgba(0,0,0,0.1);
+        }
+
+        .selectable-item {
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .selectable-item.selected {
+            transform: scale(1.05);
+            box-shadow: 0 0 0 4px #ffb347, 4px 4px 0px 4px rgba(0, 0, 0, 0.2);
+            z-index: 10;
+        }
+
+        .drop-zone {
+            border: 3px dashed #aec6cf;
+            background-color: #fdfd96;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .drop-zone:hover { background-color: #b0f2c2; }
+        
+        .hidden-screen { display: none !important; }
+
+        .feedback-overlay {
+            position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.7);
+            display: flex; justify-content: center; align-items: center;
+            z-index: 50;
+        }
+
+        /* Animations */
+        .shake { animation: shake 0.5s; }
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            20%, 60% { transform: translateX(-10px); }
+            40%, 80% { transform: translateX(10px); }
+        }
+        .pulse-correct { animation: pulse-green 1s infinite; }
+        @keyframes pulse-green {
+            0% { box-shadow: 0 0 0 0 rgba(46, 204, 113, 0.7); }
+            70% { box-shadow: 0 0 0 15px rgba(46, 204, 113, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(46, 204, 113, 0); }
+        }
+        
+        .door { transition: transform 1s ease-in-out; transform-origin: left; }
+        .door.open { transform: perspective(1000px) rotateY(-90deg); }
+
+        /* Fluid Typography based on vmin for better compatibility */
+        .text-fluid-sm { font-size: clamp(0.75rem, 1.5vmin, 1.2rem); }
+        .text-fluid-md { font-size: clamp(1rem, 2vmin, 1.5rem); }
+        .text-fluid-lg { font-size: clamp(1.25rem, 3vmin, 2rem); }
+        .text-fluid-xl { font-size: clamp(1.5rem, 4.5vmin, 3rem); }
+
+        #cert-container {
+            width: 800px; height: 600px;
+            background-color: #f8f4e6;
+            padding: 40px;
+            position: relative;
+            border: 20px solid #aec6cf; 
+            border-radius: 10px;
+            text-align: center; 
+            font-family: 'Nunito', sans-serif;
+            box-sizing: border-box;
+            overflow: hidden;
+            display: none;
+        }
+        .cert-bg-circle {
+            position: absolute;
+            border-radius: 50%;
+            opacity: 0.5;
+            z-index: 0;
+        }
+        .cert-content {
+            position: relative;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        
+        <div id="ui-bar" class="absolute top-0 left-0 w-full p-2 md:p-4 flex justify-between items-center z-40 hidden-screen bg-white/70 backdrop-blur-sm border-b-4 border-pastel-blue">
+            <div class="flex items-center gap-2 md:gap-4">
+                <div class="bg-pastel-blue text-white font-cartoon px-3 py-1 md:px-4 md:py-2 rounded-full shadow-cartoon text-fluid-md">
+                    <i class="fas fa-user mr-1"></i> <span id="player-name-display" class="text-pastel-yellow"></span>
+                </div>
+                <div class="bg-pastel-pink text-white font-cartoon px-3 py-1 md:px-4 md:py-2 rounded-full shadow-cartoon text-fluid-md">
+                    <i class="fas fa-star mr-1"></i> Puntos: <span id="score-display">0</span>
+                </div>
+            </div>
+            <button id="music-toggle" class="cartoon-btn bg-pastel-purple hover:bg-purple-400 p-2 rounded-full shadow-cartoon" onclick="toggleMusic()">
+                <i class="fas fa-volume-up text-fluid-md"></i>
+            </button>
+        </div>
+
+        <div id="screen-start" class="absolute inset-0 flex flex-col items-center justify-center bg-room-bg" style="background-image: repeating-linear-gradient(45deg, #f8f4e6 25%, transparent 25%, transparent 75%, #f8f4e6 75%, #f8f4e6), repeating-linear-gradient(45deg, #f8f4e6 25%, #e0d8c0 25%, #e0d8c0 75%, #f8f4e6 75%, #f8f4e6); background-position: 0 0, 20px 20px; background-size: 40px 40px;">
+            <div class="panel p-6 md:p-8 text-center flex flex-col items-center gap-4 z-10 w-4/5 max-w-2xl">
+                <h1 class="title-text text-fluid-xl mb-2 leading-tight">Escape Room Gamit ang Sangkap sa Pagbigkas</h1>
+                <p class="font-body text-fluid-md text-gray-700 mb-2">Makatakas ka kaya gamit ang iyong kaalaman?</p>
+                
+                <input type="text" id="player-name-input" placeholder="Ilagay ang iyong pangalan..." class="w-full p-3 md:p-4 text-fluid-md font-body border-4 border-pastel-blue rounded-xl text-center focus:outline-none focus:border-pastel-pink shadow-inner">
+                
+                <button onclick="startGame()" class="cartoon-btn text-fluid-lg py-3 px-8 rounded-2xl shadow-cartoon hover:bg-orange-500 w-full sm:w-auto mt-2">
+                    Magsimula <i class="fas fa-door-open ml-2"></i>
+                </button>
+            </div>
+        </div>
+
+        <div id="screen-level-1" class="absolute inset-0 hidden-screen bg-room-bg flex flex-col pt-16 md:pt-20 px-4 pb-4">
+            <div class="panel flex-1 flex flex-col p-4">
+                <div class="text-center mb-2">
+                    <h2 class="font-cartoon text-pastel-blue text-fluid-lg"><i class="fas fa-puzzle-piece mr-2"></i>Unang Silid (Madali)</h2>
+                    <p class="font-body text-fluid-md">I-click ang salita, pagkatapos ay i-click ang kahon na may tamang kahulugan nito.</p>
+                </div>
+                
+                <div class="flex-1 flex flex-col md:flex-row gap-4">
+                    <!-- Choices -->
+                    <div class="w-full md:w-1/3 flex flex-row md:flex-col justify-center md:justify-around gap-2 p-2 bg-gray-100 rounded-xl border-2 border-gray-200" id="l1-choices">
+                        <div class="selectable-item cartoon-btn bg-pastel-pink p-2 md:p-3 rounded-xl shadow-cartoon text-center text-fluid-md" data-type="tono" onclick="selectTerm(this)">Tono</div>
+                        <div class="selectable-item cartoon-btn bg-pastel-green p-2 md:p-3 rounded-xl shadow-cartoon text-center text-fluid-md text-gray-800" data-type="diin" onclick="selectTerm(this)">Diin</div>
+                        <div class="selectable-item cartoon-btn bg-pastel-purple p-2 md:p-3 rounded-xl shadow-cartoon text-center text-fluid-md" data-type="antala" onclick="selectTerm(this)">Antala / Hinto</div>
+                    </div>
+                    
+                    <!-- Drop Zones (Click targets) -->
+                    <div class="w-full md:w-2/3 flex flex-col justify-around gap-2">
+                        <div class="drop-zone p-2 md:p-4 rounded-xl flex items-center justify-between min-h-[3rem] md:min-h-[4rem]" data-target="diin" onclick="placeTerm(this)">
+                            <span class="font-body text-fluid-md w-2/3 pr-2">Lakas, bigat, o bahagyang pagtaas ng tinig sa pagbigkas ng pantig.</span>
+                            <div class="drop-target w-1/3 min-h-[2.5rem] bg-white/70 rounded border-2 border-dashed border-gray-400 flex items-center justify-center p-1"></div>
+                        </div>
+                        <div class="drop-zone p-2 md:p-4 rounded-xl flex items-center justify-between min-h-[3rem] md:min-h-[4rem]" data-target="antala" onclick="placeTerm(this)">
+                            <span class="font-body text-fluid-md w-2/3 pr-2">Saglit na pagtigil sa pagsasalita upang higit na maging malinaw ang mensahe.</span>
+                            <div class="drop-target w-1/3 min-h-[2.5rem] bg-white/70 rounded border-2 border-dashed border-gray-400 flex items-center justify-center p-1"></div>
+                        </div>
+                        <div class="drop-zone p-2 md:p-4 rounded-xl flex items-center justify-between min-h-[3rem] md:min-h-[4rem]" data-target="tono" onclick="placeTerm(this)">
+                            <span class="font-body text-fluid-md w-2/3 pr-2">Taas-baba na iniuukol sa pagkabigkas ng pantig ng isang salita.</span>
+                            <div class="drop-target w-1/3 min-h-[2.5rem] bg-white/70 rounded border-2 border-dashed border-gray-400 flex items-center justify-center p-1"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-2 flex justify-center">
+                    <button id="btn-check-l1" onclick="checkLevel1()" class="cartoon-btn bg-pastel-yellow text-gray-800 text-fluid-lg py-2 px-8 rounded-xl shadow-cartoon hover:bg-yellow-300 transition-all" disabled>Suriin</button>
+                </div>
+            </div>
+            
+            <div class="absolute right-0 top-1/2 transform -translate-y-1/2 w-[8%] h-[50%] bg-amber-800 border-4 border-amber-900 door shadow-lg z-0" id="door-l1">
+                 <div class="w-3 h-3 md:w-4 md:h-4 bg-yellow-400 rounded-full absolute left-1 md:left-2 top-1/2 shadow-sm"></div>
+            </div>
+        </div>
+
+        <div id="screen-level-2" class="absolute inset-0 hidden-screen bg-room-bg flex flex-col pt-16 md:pt-20 px-4 pb-4">
+            <div class="panel flex-1 flex flex-col p-4 relative">
+                 <div class="text-center mb-2">
+                    <h2 class="font-cartoon text-pastel-pink text-fluid-lg"><i class="fas fa-search mr-2"></i>Ikalawang Silid (Katamtaman)</h2>
+                    <p class="font-body text-fluid-md">Tukuyin ang <strong>Uri ng Diin</strong> ng salitang may salungguhit. Piliin ang tamang sagot.</p>
+                </div>
+
+                <div class="flex-1 flex flex-col justify-center items-center gap-4" id="l2-question-container">
+                    <!-- Dynamic Questions -->
+                </div>
+                
+                 <div class="absolute right-4 bottom-4 text-fluid-xl text-gray-400" id="lock-l2">
+                     <i class="fas fa-lock"></i>
+                 </div>
+            </div>
+             <div class="absolute right-0 top-1/2 transform -translate-y-1/2 w-[8%] h-[50%] bg-amber-800 border-4 border-amber-900 door shadow-lg z-0" id="door-l2">
+                <div class="w-3 h-3 md:w-4 md:h-4 bg-yellow-400 rounded-full absolute left-1 md:left-2 top-1/2 shadow-sm"></div>
+           </div>
+        </div>
+
+        <div id="screen-level-3" class="absolute inset-0 hidden-screen bg-room-bg flex flex-col pt-16 md:pt-20 px-4 pb-4">
+            <div class="panel flex-1 flex flex-col p-4 relative">
+                 <div class="text-center mb-2">
+                    <h2 class="font-cartoon text-pastel-purple text-fluid-lg"><i class="fas fa-brain mr-2"></i>Ikatlong Silid (Mahirap)</h2>
+                    <p class="font-body text-fluid-md">Ilapat ang kaalaman! Suriin kung anong sangkap sa pagbigkas ang nagamit sa sitwasyon.</p>
+                </div>
+
+                <div class="flex-1 flex flex-col justify-center items-center gap-2 w-full max-w-4xl mx-auto" id="l3-question-container">
+                    <!-- Dynamic Questions -->
+                </div>
+                
+                 <div class="absolute right-4 bottom-4 text-fluid-xl text-red-500" id="hatch-l3">
+                     <i class="fas fa-door-closed"></i>
+                 </div>
+            </div>
+        </div>
+
+        <div id="screen-end" class="absolute inset-0 hidden-screen bg-room-bg flex flex-col items-center justify-center p-8 text-center" style="background-image: radial-gradient(circle at center, #fdfd96 0%, #f8f4e6 70%);">
+            <h1 class="title-text text-fluid-xl mb-4 leading-tight">Tagumpay!<br>Nakatakas ka!</h1>
+            <p class="font-body text-fluid-lg mb-2">Magaling, <span id="final-player-name" class="font-bold text-pastel-blue"></span>!</p>
+            <div class="bg-white p-4 rounded-xl shadow-sm border-4 border-pastel-green mb-6 inline-block">
+                <p class="font-body text-fluid-md">Nakakuha ka ng</p>
+                <p class="font-cartoon text-fluid-xl text-pastel-pink my-1"><span id="final-score"></span> <i class="fas fa-star text-pastel-yellow"></i></p>
+                <p class="font-body text-fluid-sm">na kabuuang puntos!</p>
+            </div>
+            
+            <div class="flex flex-col sm:flex-row gap-4">
+                <button onclick="downloadCertificate()" class="cartoon-btn bg-pastel-blue text-fluid-md py-3 px-6 rounded-xl shadow-cartoon hover:bg-blue-400">
+                    <i class="fas fa-certificate mr-2"></i> Kunin ang Sertipiko
+                </button>
+                <button onclick="location.reload()" class="cartoon-btn bg-pastel-green text-gray-800 text-fluid-md py-3 px-6 rounded-xl shadow-cartoon hover:bg-green-400">
+                    <i class="fas fa-redo mr-2"></i> Ulitin ang Laro
+                </button>
+            </div>
+
+            <canvas id="confetti" class="absolute inset-0 pointer-events-none z-50"></canvas>
+        </div>
+
+        <div id="feedback-overlay" class="feedback-overlay hidden-screen">
+            <div id="feedback-modal" class="panel p-6 md:p-8 text-center transform scale-90 transition-transform duration-300 w-4/5 max-w-md">
+                <div id="feedback-icon" class="text-fluid-xl mb-2"></div>
+                <h3 id="feedback-title" class="font-cartoon text-fluid-lg mb-2"></h3>
+                <p id="feedback-message" class="font-body text-fluid-md mb-4"></p>
+                <p id="feedback-chances" class="font-body text-fluid-md text-red-500 font-bold mb-4 hidden bg-red-100 p-2 rounded-lg"></p>
+                <button onclick="closeFeedback()" class="cartoon-btn bg-pastel-blue py-2 px-6 rounded-xl shadow-cartoon text-fluid-md">Ipagpatuloy</button>
+            </div>
+        </div>
+
+        <!-- Hidden Certificate -->
+        <div id="cert-container">
+            <div class="cert-bg-circle" style="top: -50px; left: -50px; width: 200px; height: 200px; background-color: #ffd1dc;"></div>
+            <div class="cert-bg-circle" style="bottom: -80px; right: -80px; width: 300px; height: 300px; background-color: #b0f2c2;"></div>
+            <div class="cert-bg-circle" style="top: 40%; right: 10%; width: 100px; height: 100px; background-color: #fdfd96;"></div>
+            <div class="cert-bg-circle" style="bottom: 20%; left: 10%; width: 150px; height: 150px; background-color: #c3b1e1;"></div>
+            
+            <div class="cert-content">
+                <h1 style="font-family: 'Fredoka One', cursive; color: #ffb347; font-size: 48px; margin-bottom: 10px;">Sertipiko ng Pagkilala</h1>
+                <p style="font-size: 24px; color: #555;">Iginagawad ito kay</p>
+                <h2 id="cert-name" style="font-family: 'Fredoka One', cursive; color: #34495e; font-size: 56px; margin: 20px 0; border-bottom: 2px solid #aec6cf; display: inline-block; padding: 0 40px;"></h2>
+                <p style="font-size: 20px; line-height: 1.5; margin-bottom: 30px;">
+                    Dahil sa matagumpay na pagtakas sa <strong>Escape Room Gamit ang Sangkap sa Pagbigkas</strong> at pagpapakita ng mahusay na kaalaman sa <strong>Tono, Diin, at Antala</strong> pati na rin sa mga Uri ng Diin.
+                </p>
+                <div style="display: flex; justify-content: space-around; margin-top: 50px; align-items: center;">
+                    <div>
+                        <p id="cert-score" style="font-weight: bold; font-size: 32px; color: #2ecc71;"></p>
+                        <p style="font-size: 16px; border-top: 2px solid #eee; padding-top: 5px;">Kabuuang Puntos</p>
+                    </div>
+                    <div>
+                        <i class="fas fa-medal" style="font-size: 80px; color: #f1c40f;"></i>
+                    </div>
+                </div>
+                <p style="margin-top: 40px; font-size: 14px; color: #999;">Petsa: <span id="cert-date"></span></p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Game State
+        let playerName = "";
+        let score = 0;
+        let attemptsLeft = 2;
+        const SCORE_PER_CORRECT = 10;
+        const CHANCES_PER_Q = 2;
+
+        const screens = {
+            start: document.getElementById('screen-start'),
+            level1: document.getElementById('screen-level-1'),
+            level2: document.getElementById('screen-level-2'),
+            level3: document.getElementById('screen-level-3'),
+            end: document.getElementById('screen-end')
+        };
+        const uiBar = document.getElementById('ui-bar');
+        const scoreDisplay = document.getElementById('score-display');
+
+        // Simple Audio Synth - Lazy Loading para hindi mag-crash ang browser sa preview
+        let actx = null;
+        let bgmOsc = null, bgmOsc2 = null, bgmGain = null;
+        let isMusicPlaying = false;
+
+        function initAudio() {
+            try {
+                if (!actx) {
+                    const AudioContext = window.AudioContext || window.webkitAudioContext;
+                    if (AudioContext) actx = new AudioContext();
+                }
+                if (actx && actx.state === 'suspended') actx.resume();
+            } catch (e) {
+                console.log("Audio not supported or blocked by browser.");
+            }
+        }
+
+        function updateScore(points) {
+            score += points;
+            scoreDisplay.innerText = score;
+            scoreDisplay.parentElement.classList.add('pulse-correct');
+            setTimeout(() => scoreDisplay.parentElement.classList.remove('pulse-correct'), 1000);
+        }
+
+        function startGame() {
+            const input = document.getElementById('player-name-input').value.trim();
+            if (!input) { showFeedback("Oops!", "Pakilagay ang iyong pangalan bago magsimula.", "error"); return; }
+            playerName = input;
+            document.getElementById('player-name-display').innerText = playerName;
+            
+            // Simulan ang audio nang ligtas kapag nakapag-click na ang user
+            initAudio(); 
+            
+            switchScreen(screens.start, screens.level1);
+            uiBar.classList.remove('hidden-screen');
+            playSfx('start');
+        }
+
+        function switchScreen(from, to) {
+            from.classList.add('hidden-screen');
+            to.classList.remove('hidden-screen');
+        }
+
+        function toggleMusic() {
+            const icon = document.querySelector('#music-toggle i');
+            initAudio(); // Siguraduhing buhay ang audio context
+            if (isMusicPlaying) {
+                if (bgmGain) {
+                    bgmGain.gain.linearRampToValueAtTime(0, actx.currentTime + 0.5);
+                    setTimeout(() => { 
+                        if(bgmOsc) { bgmOsc.stop(); bgmOsc.disconnect(); bgmOsc = null; }
+                        if(bgmOsc2) { bgmOsc2.stop(); bgmOsc2.disconnect(); bgmOsc2 = null; }
+                    }, 500);
+                }
+                icon.classList.replace('fa-volume-up', 'fa-volume-mute');
+                isMusicPlaying = false;
+            } else {
+                playBGM();
+                icon.classList.replace('fa-volume-mute', 'fa-volume-up');
+                isMusicPlaying = true;
+            }
+        }
+
+        function playBGM() {
+            initAudio();
+            if (!actx || bgmOsc) return;
+            bgmGain = actx.createGain();
+            bgmGain.gain.setValueAtTime(0, actx.currentTime);
+            bgmGain.gain.linearRampToValueAtTime(0.03, actx.currentTime + 1); // Soft volume
+            bgmGain.connect(actx.destination);
+
+            // Simple happy melody loop using two oscillators for a slightly richer tone
+            bgmOsc = actx.createOscillator(); bgmOsc.type = 'triangle';
+            bgmOsc2 = actx.createOscillator(); bgmOsc2.type = 'sine';
+            bgmOsc.connect(bgmGain); bgmOsc2.connect(bgmGain);
+
+            let now = actx.currentTime;
+            const melody = [
+                261.63, 329.63, 392.00, 523.25, 392.00, 329.63, // C E G C G E
+                349.23, 440.00, 523.25, 698.46, 523.25, 440.00  // F A C F C A
+            ]; 
+            const noteLength = 0.4;
+            // Schedule notes for a long duration (cheap looping)
+            for (let i = 0; i < 500; i++) {
+                let freq = melody[i % melody.length];
+                bgmOsc.frequency.setValueAtTime(freq, now + (i * noteLength));
+                bgmOsc2.frequency.setValueAtTime(freq * 0.5, now + (i * noteLength)); // Octave lower
+            }
+            bgmOsc.start(); bgmOsc2.start();
+        }
+
+        function playSfx(type) {
+            if(!actx || actx.state === 'suspended') return;
+            const osc = actx.createOscillator();
+            const gain = actx.createGain();
+            osc.connect(gain); gain.connect(actx.destination);
+            let now = actx.currentTime;
+
+            if (type === 'correct') {
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(440, now);
+                osc.frequency.exponentialRampToValueAtTime(880, now + 0.1);
+                gain.gain.setValueAtTime(0.2, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+                osc.start(now); osc.stop(now + 0.3);
+            } else if (type === 'wrong') {
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(150, now);
+                osc.frequency.exponentialRampToValueAtTime(100, now + 0.2);
+                gain.gain.setValueAtTime(0.2, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+                osc.start(now); osc.stop(now + 0.3);
+            } else if (type === 'start' || type === 'door') {
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(200, now); osc.frequency.linearRampToValueAtTime(400, now + 0.2); osc.frequency.linearRampToValueAtTime(300, now + 0.4);
+                gain.gain.setValueAtTime(0, now); gain.gain.linearRampToValueAtTime(0.1, now + 0.1); gain.gain.linearRampToValueAtTime(0, now + 0.4);
+                osc.start(now); osc.stop(now + 0.4);
+            }
+        }
+
+        const feedbackOverlay = document.getElementById('feedback-overlay');
+        const feedbackModal = document.getElementById('feedback-modal');
+        let onFeedbackClose = null;
+
+        function showFeedback(title, message, type, chancesLeft = -1, callback = null) {
+            document.getElementById('feedback-title').innerText = title;
+            document.getElementById('feedback-message').innerHTML = message; // allow html
+            onFeedbackClose = callback;
+            
+            feedbackModal.className = 'panel p-6 md:p-8 text-center transform transition-transform duration-300 scale-100 w-4/5 max-w-md'; 
+            const fIcon = document.getElementById('feedback-icon');
+            const fTitle = document.getElementById('feedback-title');
+            const fChances = document.getElementById('feedback-chances');
+
+            if (type === 'success') {
+                fIcon.innerHTML = '<i class="fas fa-check-circle text-green-500"></i>';
+                fTitle.className = 'font-cartoon text-fluid-lg mb-2 text-green-600';
+                feedbackModal.classList.add('border-green-400');
+                playSfx('correct');
+            } else if (type === 'error') {
+                fIcon.innerHTML = '<i class="fas fa-times-circle text-red-500"></i>';
+                fTitle.className = 'font-cartoon text-fluid-lg mb-2 text-red-600';
+                feedbackModal.classList.add('border-red-400', 'shake');
+                playSfx('wrong');
+            } else {
+                fIcon.innerHTML = '<i class="fas fa-info-circle text-blue-500"></i>';
+                fTitle.className = 'font-cartoon text-fluid-lg mb-2 text-blue-600';
+            }
+
+            if (chancesLeft >= 0) {
+                fChances.innerHTML = `<i class="fas fa-heart-broken"></i> Pagkakataong natitira: ${chancesLeft}`;
+                fChances.classList.remove('hidden');
+            } else { fChances.classList.add('hidden'); }
+
+            feedbackOverlay.classList.remove('hidden-screen');
+        }
+
+        function closeFeedback() {
+            feedbackOverlay.classList.add('hidden-screen');
+            feedbackModal.classList.replace('scale-100', 'scale-90');
+            feedbackModal.classList.remove('shake');
+            if (onFeedbackClose) { onFeedbackClose(); onFeedbackClose = null; }
+        }
+
+        let activeTerm = null;
+        let l1AttemptsLeft = CHANCES_PER_Q;
+
+        function selectTerm(element) {
+            // Deselect all
+            document.querySelectorAll('.selectable-item').forEach(el => el.classList.remove('selected'));
+            
+            // If clicking the already selected one, just deselect
+            if (activeTerm === element) {
+                activeTerm = null;
+            } else {
+                element.classList.add('selected');
+                activeTerm = element;
+            }
+        }
+
+        function placeTerm(dropZone) {
+            const targetContainer = dropZone.querySelector('.drop-target');
+            
+            if (activeTerm) {
+                // If dropzone has item, put it back to choices
+                if (targetContainer.children.length > 0) {
+                    const existingItem = targetContainer.children[0];
+                    document.getElementById('l1-choices').appendChild(existingItem);
+                }
+                
+                // Move selected item to dropzone
+                targetContainer.appendChild(activeTerm);
+                activeTerm.classList.remove('selected');
+                activeTerm.style.width = '100%';
+                activeTerm.style.margin = '0';
+                activeTerm = null;
+            } else if (targetContainer.children.length > 0) {
+                // If clicking an occupied dropzone without an active term, remove the item
+                const item = targetContainer.children[0];
+                document.getElementById('l1-choices').appendChild(item);
+                item.style.width = 'auto';
+            }
+            checkL1Completion();
+        }
+
+        function checkL1Completion() {
+            const placedItems = document.querySelectorAll('#screen-level-1 .drop-target .selectable-item');
+            const btn = document.getElementById('btn-check-l1');
+            if (placedItems.length === 3) {
+                btn.disabled = false;
+                btn.classList.add('pulse-correct');
+            } else {
+                btn.disabled = true;
+                btn.classList.remove('pulse-correct');
+            }
+        }
+
+        function checkLevel1() {
+            const zones = document.querySelectorAll('#screen-level-1 .drop-zone');
+            let isCorrect = true;
+            
+            zones.forEach(zone => {
+                const targetType = zone.dataset.target;
+                const dropped = zone.querySelector('.selectable-item');
+                if (!dropped || dropped.dataset.type !== targetType) isCorrect = false;
+            });
+
+            if (isCorrect) {
+                updateScore(SCORE_PER_CORRECT * 3);
+                showFeedback("Tama!", "Naitapat mo nang wasto ang mga bahagi ng pagbigkas.", "success", -1, () => {
+                    openDoor('door-l1', () => { switchScreen(screens.level1, screens.level2); initLevel2(); });
+                });
+            } else {
+                l1AttemptsLeft--;
+                if (l1AttemptsLeft > 0) {
+                    showFeedback("Mali", "Hindi tumpak ang pagkakapares. Subukan muli!", "error", l1AttemptsLeft);
+                    // Reset
+                    document.querySelectorAll('#screen-level-1 .drop-target .selectable-item').forEach(el => {
+                        document.getElementById('l1-choices').appendChild(el);
+                        el.style.width = 'auto';
+                    });
+                    checkL1Completion();
+                } else {
+                    showFeedback("Naubos ang pagkakataon", "Ang tamang sagot ay:<br><br><b>Tono</b> - Taas-baba ng pantig.<br><b>Diin</b> - Lakas o bigat sa pantig.<br><b>Antala</b> - Saglit na pagtigil.", "info", 0, () => {
+                        openDoor('door-l1', () => { switchScreen(screens.level1, screens.level2); initLevel2(); });
+                    });
+                }
+            }
+        }
+
+        function openDoor(doorId, callback) {
+            playSfx('door');
+            document.getElementById(doorId).classList.add('open');
+            setTimeout(callback, 1000);
+        }
+
+        const l2Questions = [
+            { word: "<u>ba</u>hay", context: "Malaki ang (bahay) ni Pedro.", options: ["Malumay", "Malumi", "Mabilis", "Maragsa"], answer: "Malumay", hint: "Diin sa ikalawa mula sa huli, walang impit sa dulo." },
+            { word: "bu<u>lak</u>lak", context: "Mabango ang (bulaklak) sa hardin.", options: ["Malumay", "Malumi", "Mabilis", "Maragsa"], answer: "Mabilis", hint: "Tuloy-tuloy ang bigkas hanggang dulo, walang impit." },
+            { word: "<u>lu</u>ha'", context: "Pumatak ang kanyang (luha).", options: ["Malumay", "Malumi", "Mabilis", "Maragsa"], answer: "Malumi", hint: "Diin sa ikalawa mula sa dulo, ngunit may impit (') sa huling pantig." },
+            { word: "tu<u>la'</u>", context: "Madamdamin ang kanyang (tula).", options: ["Malumay", "Malumi", "Mabilis", "Maragsa"], answer: "Maragsa", hint: "Tuloy-tuloy ang bigkas ngunit may impit (') sa dulo." }
+        ];
+        let l2CurrentQ = 0; let l2AttemptsLeft = CHANCES_PER_Q;
+
+        function initLevel2() { l2CurrentQ = 0; renderL2Question(); }
+
+        function renderL2Question() {
+            const container = document.getElementById('l2-question-container');
+            const q = l2Questions[l2CurrentQ];
+            l2AttemptsLeft = CHANCES_PER_Q;
+            
+            let html = `
+                <div class="bg-white p-4 md:p-6 rounded-2xl border-4 border-pastel-pink shadow-sm w-full max-w-2xl text-center">
+                    <div class="flex justify-between items-center mb-2">
+                        <span class="font-body text-fluid-sm text-gray-500">Uri ng Diin</span>
+                        <span class="font-body text-fluid-sm font-bold bg-gray-100 px-3 py-1 rounded-full text-gray-600">Tanong ${l2CurrentQ + 1} / ${l2Questions.length}</span>
+                    </div>
+                    <p class="font-body text-fluid-md mb-2 italic text-gray-600">"${q.context}"</p>
+                    <div class="text-fluid-xl font-bold mb-6 text-gray-800 tracking-wider">${q.word}</div>
+                    
+                    <div class="grid grid-cols-2 gap-3 md:gap-4">
+                        ${q.options.map(opt => `
+                            <button onclick="checkL2Answer('${opt}')" class="cartoon-btn bg-pastel-blue hover:bg-blue-400 py-2 md:py-3 rounded-xl text-fluid-md">
+                                ${opt}
+                            </button>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+            container.innerHTML = html;
+        }
+
+        function checkL2Answer(selected) {
+            const q = l2Questions[l2CurrentQ];
+            if (selected === q.answer) {
+                updateScore(SCORE_PER_CORRECT);
+                showFeedback("Tumpak!", `Tama! Ang ${q.word} ay <b>${q.answer}</b>.`, "success", -1, proceedL2);
+            } else {
+                l2AttemptsLeft--;
+                if (l2AttemptsLeft > 0) {
+                    showFeedback("Hindi tumpak", `Subukan muli! <br><small class="text-gray-600">Tip: ${q.hint}</small>`, "error", l2AttemptsLeft);
+                } else {
+                     showFeedback("Ubos na ang pagkakataon", `Ang tamang sagot ay <strong>${q.answer}</strong>.`, "info", 0, proceedL2);
+                }
+            }
+        }
+
+        function proceedL2() {
+            l2CurrentQ++;
+            if (l2CurrentQ < l2Questions.length) {
+                renderL2Question();
+            } else {
+                document.getElementById('lock-l2').innerHTML = '<i class="fas fa-lock-open text-green-500"></i>';
+                setTimeout(() => { openDoor('door-l2', () => { switchScreen(screens.level2, screens.level3); initLevel3(); }); }, 500);
+            }
+        }
+
+        const l3Questions = [
+            {
+                scenario: "A: \"Nandiyan na ang guro.\" <small class='text-gray-500'>(Sinasabi lang na dumating na)</small><br>B: \"Nandiyan na ang guro?\" <small class='text-gray-500'>(Gusto malaman kung totoo ba)</small>",
+                question: "Aling sangkap sa pagbigkas ang nagpaiba sa layunin ng dalawang pahayag?",
+                options: ["Tono / Intonasyon", "Diin", "Antala / Hinto"],
+                answer: "Tono / Intonasyon",
+                desc: "Ang pagbabago sa pagtaas o pagbaba ng tinig (lalo na sa dulo) ang nagpapalit kung ito ay nagsasalaysay o nagtatanong."
+            },
+            {
+                scenario: "A: \"Hindi, maganda.\" <small class='text-gray-500'>(Sinasabing maganda ang isang bagay)</small><br>B: \"Hindi maganda.\" <small class='text-gray-500'>(Sinasabing pangit ang isang bagay)</small>",
+                question: "Ano ang ginamit upang mag-iba ang mensahe ng pangungusap?",
+                options: ["Tono / Intonasyon", "Diin", "Antala / Hinto"],
+                answer: "Antala / Hinto",
+                desc: "Ang kuwit (,) ay sumisimbolo sa saglit na pagtigil na tuluyang nagpabago sa kahulugan."
+            },
+            {
+                scenario: "A: \"Ang <u>PA</u>so ay gawa sa luwad.\" <small class='text-gray-500'>(flower pot)</small><br>B: \"Masakit ang pa<u>SO</u> ko sa daliri.\" <small class='text-gray-500'>(burn)</small>",
+                question: "Anong sangkap sa pagbigkas ang nagpabago sa kahulugan ng salitang 'paso'?",
+                options: ["Tono / Intonasyon", "Diin", "Antala / Hinto"],
+                answer: "Diin",
+                desc: "Ang paglipat ng lakas ng bigkas mula sa unang pantig patungo sa huli ay nagpabago sa salita."
+            }
+        ];
+        let l3CurrentQ = 0; let l3AttemptsLeft = CHANCES_PER_Q;
+
+        function initLevel3() { l3CurrentQ = 0; renderL3Question(); }
+
+        function renderL3Question() {
+            const container = document.getElementById('l3-question-container');
+            const q = l3Questions[l3CurrentQ];
+            l3AttemptsLeft = CHANCES_PER_Q;
+            
+            let html = `
+                <div class="bg-white p-4 md:p-6 rounded-2xl border-4 border-pastel-purple shadow-sm w-full text-center">
+                     <p class="font-body text-fluid-sm text-gray-500 font-bold mb-2">Pagsusuri ${l3CurrentQ + 1} / ${l3Questions.length}</p>
+                     
+                     <div class="bg-room-bg p-3 md:p-4 rounded-xl mb-4 text-left font-body text-fluid-md border-l-4 border-pastel-purple leading-relaxed">
+                         ${q.scenario}
+                     </div>
+
+                     <p class="font-bold text-fluid-md mb-4 text-gray-800">${q.question}</p>
+
+                     <div class="flex flex-col md:flex-row gap-2 md:gap-4 justify-center">
+                        ${q.options.map(opt => `
+                            <button onclick="checkL3Answer('${opt}')" class="cartoon-btn bg-pastel-purple hover:bg-purple-500 py-2 md:py-3 px-4 rounded-xl text-fluid-md flex-1">
+                                ${opt}
+                            </button>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+            container.innerHTML = html;
+        }
+
+        function checkL3Answer(selected) {
+            const q = l3Questions[l3CurrentQ];
+            if (selected === q.answer) {
+                updateScore(SCORE_PER_CORRECT * 1.5); // 15 points per hard question
+                showFeedback("Mahusay!", `Tama! <br><small class="text-gray-700">${q.desc}</small>`, "success", -1, proceedL3);
+            } else {
+                 l3AttemptsLeft--;
+                if (l3AttemptsLeft > 0) {
+                    showFeedback("Hindi tama", "Basahin at suriin muli ang sitwasyon.", "error", l3AttemptsLeft);
+                } else {
+                     showFeedback("Naubos ang pagkakataon", `Ang sagot ay <strong>${q.answer}</strong>.<br><small class="text-gray-700">${q.desc}</small>`, "info", 0, proceedL3);
+                }
+            }
+        }
+
+        function proceedL3() {
+             l3CurrentQ++;
+            if (l3CurrentQ < l3Questions.length) {
+                renderL3Question();
+            } else {
+                document.getElementById('hatch-l3').innerHTML = '<i class="fas fa-door-open text-green-500"></i>';
+                setTimeout(() => { endGame(); }, 1000);
+            }
+        }
+
+        function endGame() {
+            uiBar.classList.add('hidden-screen');
+            switchScreen(screens.level3, screens.end);
+            
+            document.getElementById('final-player-name').innerText = playerName;
+            document.getElementById('final-score').innerText = score;
+            
+            playSfx('start');
+            startConfetti();
+            prepareCertificate();
+        }
+
+        function prepareCertificate() {
+            document.getElementById('cert-name').innerText = playerName;
+            document.getElementById('cert-score').innerText = `${score} Puntos`;
+            const date = new Date();
+            const options = { year: 'numeric', month: 'long', day: 'numeric' };
+            document.getElementById('cert-date').innerText = date.toLocaleDateString('fil-PH', options);
+        }
+
+        function downloadCertificate() {
+            const element = document.getElementById('cert-container');
+            const originalParent = element.parentNode;
+            
+            // Create a temporary wrapper to properly render the cert off-screen
+            const tempWrapper = document.createElement('div');
+            tempWrapper.style.position = 'absolute';
+            tempWrapper.style.top = '0';
+            tempWrapper.style.left = '0';
+            tempWrapper.style.width = '800px';
+            tempWrapper.style.height = '600px';
+            tempWrapper.style.zIndex = '-1000';
+            document.body.appendChild(tempWrapper);
+            
+            tempWrapper.appendChild(element);
+            element.style.display = 'block'; // Make it visible for html2canvas
+            
+            const opt = {
+                margin:       0,
+                filename:     `Sertipiko_${playerName.replace(/\s+/g, '_')}.pdf`,
+                image:        { type: 'jpeg', quality: 0.98 },
+                html2canvas:  { scale: 2, useCORS: true, windowWidth: 800, windowHeight: 600 },
+                jsPDF:        { unit: 'px', format: [800, 600], orientation: 'landscape' }
+            };
+            
+            html2pdf().set(opt).from(element).save().then(() => {
+                // Restore original state after downloading
+                originalParent.appendChild(element);
+                document.body.removeChild(tempWrapper);
+                element.style.display = 'none';
+            });
+        }
+
+        function startConfetti() {
+            const canvas = document.getElementById('confetti');
+            const ctx = canvas.getContext('2d');
+            // Adjust canvas size to the specific game container for correct scaling
+            const container = document.getElementById('game-container');
+            canvas.width = container.clientWidth;
+            canvas.height = container.clientHeight;
+
+            const particles = [];
+            const colors = ['#ffd1dc', '#aec6cf', '#b0f2c2', '#fdfd96', '#c3b1e1', '#ffb347'];
+
+            for (let i = 0; i < 100; i++) {
+                particles.push({
+                    x: Math.random() * canvas.width,
+                    y: Math.random() * canvas.height - canvas.height,
+                    r: Math.random() * 6 + 4,
+                    dx: Math.random() * 4 - 2,
+                    dy: Math.random() * 3 + 2,
+                    color: colors[Math.floor(Math.random() * colors.length)],
+                    tilt: Math.random() * 10
+                });
+            }
+
+            function draw() {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                particles.forEach(p => {
+                    ctx.beginPath();
+                    ctx.lineWidth = p.r;
+                    ctx.strokeStyle = p.color;
+                    ctx.moveTo(p.x + p.tilt + p.r, p.y);
+                    ctx.lineTo(p.x + p.tilt, p.y + p.tilt + p.r);
+                    ctx.stroke();
+
+                    p.y += p.dy; p.x += p.dx;
+                    if (p.y > canvas.height) { p.y = -10; p.x = Math.random() * canvas.width; }
+                });
+                requestAnimationFrame(draw);
+            }
+            draw();
+        }
+    </script>
+</body>
+</html>
